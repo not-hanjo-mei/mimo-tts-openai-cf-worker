@@ -1,6 +1,6 @@
 # MiMo TTS Worker
 
-MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将小米 MiMo TTS v2.5 语音合成服务封装成兼容 OpenAI 格式的 API 接口。通过本项目，您可以轻松使用 MiMo 高质量的语音合成服务，支持 wav、pcm、mp3、opus、flac 五种音频输出格式。
+MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将小米 MiMo TTS v2.5 语音合成服务封装成兼容 OpenAI 格式的 API 接口。通过本项目，您可以轻松使用 MiMo 高质量的语音合成服务，支持 wav、pcm、mp3 三种音频输出格式。
 
 ## 📑 目录
 
@@ -15,7 +15,7 @@ MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将
 
 - 提供 OpenAI 兼容的 TTS 接口格式，可直接替换 OpenAI SDK 中的音频端点
 - 支持 MiMo v2.5 全部 9 个音色，覆盖中英文男女声
-- 支持 5 种输出格式：wav（默认）、pcm（原始）、mp3、opus、flac
+- 支持 3 种输出格式：wav（默认）、pcm（原始）、mp3（lamejs）
 - 三种预设类型：标准预设（音色 + 风格 + 语速）、VoiceDesign（自定义声音设计）、VoiceClone（参考音频克隆）
 - 语速控制 0.25x - 4.0x，通过文本指令自然传递
 - 风格控制支持自由文本描述，充分发挥 MiMo 风格理解能力
@@ -198,9 +198,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 |-----------------|-------------|------|
 | wav | audio/wav | 默认格式，24kHz 16bit 单声道，最快 |
 | pcm | audio/pcm | 原始音频数据（无文件头） |
-| mp3 | audio/mpeg | MP3 格式，128kbps |
-| opus | audio/opus | Opus 格式，64kbps |
-| flac | audio/flac | FLAC 无损格式 |
+| mp3 | audio/mpeg | MP3 格式，128kbps（lamejs） |
 
 ```bash
 # MP3 格式
@@ -210,7 +208,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
   --output output.mp3
 ```
 
-> 不支持 aac 格式。传入不支持的格式会返回 400 错误。
+> 不支持 opus、aac、flac 格式。传入不支持的格式会返回 400 错误。
 
 ### 语速控制
 
@@ -277,7 +275,7 @@ curl https://你的worker地址/v1/models
 | input | string | 是 | 要转换的文本内容 | - | "你好，世界！" |
 | voice | string | 是 | 音色ID、OpenAI兼容名或预设名 | mimo_default | 冰糖, alloy, soft_female |
 | model | string | 否 | 模型名称 | mimo-v2.5-tts | tts-1, gpt-4o-mini-tts |
-| response_format | string | 否 | 音频输出格式 | wav | wav, pcm, mp3, opus, flac |
+| response_format | string | 否 | 音频输出格式 | wav | wav, pcm, mp3 |
 | speed | number | 否 | 语速调节 (0.25-4.0) | 1.0 | 1.2, 0.8 |
 | instructions | string | 否 | 风格指令（自然语言描述） | - | cheerful, 温柔亲切 |
 
@@ -354,7 +352,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 
 3. **格式转换**
    - WAV 和 PCM 格式无转换延迟，响应最快
-   - MP3、Opus、FLAC 使用原生 JS 编码器，无需加载外部依赖
+   - MP3 使用内嵌 lamejs 编码器，无外部依赖
 
 ## 📝 注意事项
 
@@ -378,7 +376,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
    - 使用了与音色不匹配的语言文本
 
 2. **Q: 支持哪些音频格式？**
-   A: 支持 5 种格式：wav（默认）、pcm、mp3、opus、flac。默认输出 WAV（24kHz, 16bit, 单声道）。
+   A: 支持 3 种格式：wav（默认）、pcm、mp3。默认输出 WAV（24kHz, 16bit, 单声道）。不支持 opus、aac、flac 格式。
 
 3. **Q: 有请求限制吗？**
    A:
@@ -400,7 +398,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
    - **VoiceClone**：设置 `"model": "mimo-v2.5-tts-voiceclone"`，`"audio"` 填写 R2 存储桶中的参考音频路径，`"style"` 描述期望的说话风格
 
 7. **Q: 为什么第一次请求很慢？**
-   A: 首次请求可能较慢的原因包括 Cloudflare Worker 冷启动及 MiMo API 响应时间。格式转换使用原生 JS 编码器，无需从 CDN 加载外部依赖。
+   A: 首次请求可能较慢的原因包括 Cloudflare Worker 冷启动及 MiMo API 响应时间。格式转换使用内嵌 JS 编码器（如 lamejs），无外部依赖。
 
 8. **Q: 可以同时输出流式音频吗？**
    A: 不能。本项目不支持流式输出（streaming）。
