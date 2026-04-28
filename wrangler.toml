@@ -2,6 +2,10 @@ name = "mimo-tts-worker"
 main = "worker.js"
 compatibility_date = "2026-01-29"
 compatibility_flags = ["nodejs_compat"]
+type = "javascript"
+
+[build.upload]
+format = "modules"
 
 [vars]
 MIMO_API_KEY = ""

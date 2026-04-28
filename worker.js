@@ -2,8 +2,7 @@
 // MiMo TTS Worker — Cloudflare Worker for MiMo TTS API (OpenAI-compatible)
 // ============================================================================
 
-// --- Auth -------------------------------------------------------------------
-const API_KEY = globalThis['API_KEY'];
+
 
 // --- Voice Mapping (OpenAI → MiMo) ------------------------------------------
 const VOICE_MAPPING = {
@@ -45,14 +44,18 @@ const CONTENT_TYPES = {
 // ============================================================================
 // Entry Point
 // ============================================================================
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
+export default {
+  async fetch(request, env, ctx) {
+    return handleRequest(request, env);
+  }
+};
 
 // ============================================================================
 // Request Handler — routes, auth, presets, mapping, API call, conversion
 // ============================================================================
-async function handleRequest(request) {
+async function handleRequest(request, env) {
+  const API_KEY = env.API_KEY;
+
   // --- CORS Preflight ---
   if (request.method === 'OPTIONS') {
     return handleOptions(request);
@@ -129,7 +132,7 @@ async function handleRequest(request) {
     }
 
     // Apply voice presets
-    const presets = loadPresets();
+    const presets = loadPresets(env);
     if (presets[voice] && typeof presets[voice] === 'object') {
       const p = presets[voice];
       voice = p.voice || voice;
@@ -148,7 +151,7 @@ async function handleRequest(request) {
     const mimoRequest = buildMimoRequest(input, voice, instructions, speed, mimoModel);
 
     // Call MiMo API
-    const mimoResponse = await callMimoAPI(mimoRequest, request);
+    const mimoResponse = await callMimoAPI(mimoRequest, request, env);
 
     // Parse MiMo response — extract WAV bytes
     const wavBytes = parseMimoResponse(mimoResponse);
@@ -236,8 +239,8 @@ function errorResponse(message, type, param, code, status) {
 // ============================================================================
 // Preset Loading
 // ============================================================================
-function loadPresets() {
-  const presetsRaw = globalThis['VOICE_PRESETS'];
+function loadPresets(env) {
+  const presetsRaw = env.VOICE_PRESETS;
   if (!presetsRaw) return {};
   if (typeof presetsRaw === 'object') return presetsRaw;
   if (typeof presetsRaw === 'string') {
@@ -373,22 +376,22 @@ function buildMimoRequest(text, voiceId, instructions, speed, model) {
   return body;
 }
 
-function getMimoApiKey(request) {
+function getMimoApiKey(request, env) {
   // Priority 1: Extract from Authorization header (client's Bearer token)
   const authHeader = request ? request.headers.get('Authorization') : null;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7);
   }
   
-  // Priority 2: Fall back to globalThis['MIMO_API_KEY']
-  const envKey = globalThis['MIMO_API_KEY'];
+  // Priority 2: Fall back to env.MIMO_API_KEY
+  const envKey = env.MIMO_API_KEY;
   if (envKey) return envKey;
   
   throw new Error('MIMO_API_KEY not configured');
 }
 
-async function callMimoAPI(requestBody, request) {
-  const apiKey = getMimoApiKey(request);
+async function callMimoAPI(requestBody, request, env) {
+  const apiKey = getMimoApiKey(request, env);
   
   const response = await fetch('https://api.xiaomimimo.com/v1/chat/completions', {
     method: 'POST',
