@@ -3,7 +3,7 @@
 // ============================================================================
 
 // --- Auth -------------------------------------------------------------------
-const API_KEY = globalThis.API_KEY;
+const API_KEY = globalThis['API_KEY'];
 
 // --- Voice Mapping (OpenAI → MiMo) ------------------------------------------
 const VOICE_MAPPING = {
@@ -237,7 +237,7 @@ function errorResponse(message, type, param, code, status) {
 // Preset Loading
 // ============================================================================
 function loadPresets() {
-  const presetsRaw = globalThis.VOICE_PRESETS;
+  const presetsRaw = globalThis['VOICE_PRESETS'];
   if (!presetsRaw) return {};
   if (typeof presetsRaw === 'object') return presetsRaw;
   if (typeof presetsRaw === 'string') {
@@ -395,8 +395,8 @@ function getMimoApiKey(request) {
     return authHeader.slice(7);
   }
   
-  // Priority 2: Fall back to globalThis.MIMO_API_KEY
-  const envKey = globalThis.MIMO_API_KEY;
+  // Priority 2: Fall back to globalThis['MIMO_API_KEY']
+  const envKey = globalThis['MIMO_API_KEY'];
   if (envKey) return envKey;
   
   throw new Error('MIMO_API_KEY not configured');
