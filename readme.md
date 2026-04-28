@@ -1,6 +1,6 @@
 # MiMo TTS Worker
 
-MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将小米 MiMo TTS v2.5 语音合成服务封装成兼容 OpenAI 格式的 API 接口。通过本项目，您可以轻松使用 MiMo 高质量的语音合成服务，并支持通过 FFmpeg WASM 将音频转换为多种格式。
+MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将小米 MiMo TTS v2.5 语音合成服务封装成兼容 OpenAI 格式的 API 接口。通过本项目，您可以轻松使用 MiMo 高质量的语音合成服务，支持 wav、pcm、mp3 三种音频输出格式。
 
 ## 📑 目录
 
@@ -15,7 +15,7 @@ MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将
 
 - 提供 OpenAI 兼容的 TTS 接口格式，可直接替换 OpenAI SDK 中的音频端点
 - 支持 MiMo v2.5 全部 9 个音色，覆盖中英文男女声
-- FFmpeg WASM 音频格式转换，支持 mp3 / opus / aac / flac / wav / pcm 共 6 种输出格式
+- 支持 3 种输出格式：wav（默认）、pcm（原始）、mp3（lamejs 纯 JS 编码）
 - 三种预设类型：标准预设（音色 + 风格 + 语速）、VoiceDesign（自定义声音设计）、VoiceClone（参考音频克隆）
 - 语速控制 0.25x - 4.0x，通过文本指令自然传递
 - 风格控制支持自由文本描述，充分发挥 MiMo 风格理解能力
@@ -190,44 +190,25 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 
 使用预设时，预设中定义的音色、风格、语速等参数会完全覆盖请求中传入的同名参数。
 
-### 音频格式转换
+### 音频格式
 
-通过 `response_format` 参数指定输出格式（需等待 FFmpeg WASM 初始化，首次请求约 2-5 秒）：
+通过 `response_format` 参数指定输出格式：
+
+| response_format | Content-Type | 说明 |
+|-----------------|-------------|------|
+| wav | audio/wav | 默认格式，24kHz 16bit 单声道，最快 |
+| pcm | audio/pcm | 原始音频数据（无文件头） |
+| mp3 | audio/mpeg | MP3 格式，首次需加载编码器（~1s） |
 
 ```bash
 # MP3 格式
 curl -X POST https://你的worker地址/v1/audio/speech \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-api-key" \
-  -d '{
-    "input": "将这段文字转为MP3格式。",
-    "voice": "冰糖",
-    "response_format": "mp3"
-  }' --output output.mp3
-
-# Opus 格式（高压缩率，适合网络传输）
-curl -X POST https://你的worker地址/v1/audio/speech \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-api-key" \
-  -d '{
-    "input": "Opus format test.",
-    "voice": "Mia",
-    "response_format": "opus"
-  }' --output output.opus
+  -d '{"input":"转成MP3","voice":"冰糖","response_format":"mp3"}' \
+  --output output.mp3
 ```
 
-支持的输出格式及对应 MIME 类型：
-
-| response_format | 输出格式 | Content-Type | 说明 |
-|-----------------|----------|-------------|------|
-| mp3 | MP3 | audio/mpeg | 通用格式，兼容性最好 |
-| opus | Opus | audio/opus | 高压缩率，音质优秀 |
-| aac | AAC | audio/aac | 流媒体常用格式 |
-| flac | FLAC | audio/flac | 无损压缩 |
-| wav | WAV | audio/wav | 默认格式，24kHz 16bit 单声道 |
-| pcm | PCM | audio/pcm | 原始音频数据（无文件头） |
-
-> **注意**：如果不指定 `response_format`，默认返回 WAV 格式，无需等待 FFmpeg 初始化，响应最快。
+> 不支持 opus、aac、flac 格式。传入不支持的格式会返回 400 错误。
 
 ### 语速控制
 
@@ -294,7 +275,7 @@ curl https://你的worker地址/v1/models
 | input | string | 是 | 要转换的文本内容 | - | "你好，世界！" |
 | voice | string | 是 | 音色ID、OpenAI兼容名或预设名 | mimo_default | 冰糖, alloy, soft_female |
 | model | string | 否 | 模型名称 | mimo-v2.5-tts | tts-1, gpt-4o-mini-tts |
-| response_format | string | 否 | 音频输出格式 | wav | mp3, opus, flac |
+| response_format | string | 否 | 音频输出格式 | wav | wav, pcm, mp3 |
 | speed | number | 否 | 语速调节 (0.25-4.0) | 1.0 | 1.2, 0.8 |
 | instructions | string | 否 | 风格指令（自然语言描述） | - | cheerful, 温柔亲切 |
 
@@ -369,10 +350,9 @@ curl -X POST https://你的worker地址/v1/audio/speech \
    - 单次请求建议不超过 4096 个字符
    - 超长文本建议分段请求
 
-3. **FFmpeg 冷启动**
-   - 首次格式转换请求需要加载 FFmpeg WASM（约 2-5 秒）
-   - 后续请求复用已加载的 FFmpeg 实例，速度正常
-   - 如果不需要格式转换，使用默认 WAV 输出可完全跳过此过程
+3. **格式转换延迟**
+   - MP3 格式首次请求需要从 CDN 加载编码器（约 1 秒），后续请求直接复用
+   - WAV 和 PCM 格式无此延迟，响应最快
 
 ## 📝 注意事项
 
@@ -396,7 +376,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
    - 使用了与音色不匹配的语言文本
 
 2. **Q: 支持哪些音频格式？**
-   A: 支持 6 种格式：mp3、opus、aac、flac、wav、pcm。默认输出 WAV（24kHz, 16bit, 单声道）。格式转换通过 FFmpeg WASM 实现，首次请求需加载 2-5 秒。
+   A: 支持 3 种格式：wav（默认）、pcm、mp3。默认输出 WAV（24kHz, 16bit, 单声道）。MP3 格式首次请求需要从 CDN 加载编码器（约 1 秒），后续请求直接复用。
 
 3. **Q: 有请求限制吗？**
    A:
@@ -418,12 +398,10 @@ curl -X POST https://你的worker地址/v1/audio/speech \
    - **VoiceClone**：设置 `"model": "mimo-v2.5-tts-voiceclone"`，`"audio"` 填写 R2 存储桶中的参考音频路径，`"style"` 描述期望的说话风格
 
 7. **Q: 为什么第一次请求很慢？**
-   A: 首次请求（尤其是格式转换请求）需要下载和初始化 FFmpeg WASM 模块（约 30MB），这个过程需要 2-5 秒。后续请求会复用已加载的模块，速度正常。如果直接输出 WAV 格式，则无需等待 FFmpeg 加载。
+   A: 关于格式转换的延迟说明：MP3 格式首次请求需要从 CDN 加载编码器（约 1 秒），后续请求直接复用。WAV 和 PCM 格式无此延迟。
 
 8. **Q: 可以同时输出流式音频吗？**
-   A: 不能。本项目不支持流式输出（streaming），原因有两个：
-   - MiMo 的流式接口与本项目的批量处理模式不兼容
-   - FFmpeg WASM 格式转换需要完整音频文件，无法对流式数据实时转码
+   A: 不能。本项目不支持流式输出（streaming）。
 
 9. **Q: 如何使用自定义域名？**
    A: 有两种方式：
