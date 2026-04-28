@@ -153,7 +153,7 @@ async function handleRequest(request) {
     // Parse MiMo response — extract WAV bytes
     const wavBytes = parseMimoResponse(mimoResponse);
 
-    // Convert audio if needed (FFmpeg for non-WAV formats)
+    // Convert audio if needed (JS encoding for non-WAV formats)
     const targetFormat = response_format || 'wav';
     const audioBytes = await convertAudio(wavBytes, targetFormat);
 
@@ -183,11 +183,11 @@ async function handleRequest(request) {
     if (msg.includes('No audio data')) {
       return errorResponse('No audio data in MiMo response', 'api_error', null, 'audio_parse_error', 500);
     }
-    if (msg.includes('FFmpeg not available')) {
-      return errorResponse('Audio format conversion unavailable', 'api_error', null, 'conversion_error', 500);
-    }
     if (msg.includes('Unsupported target format')) {
-      return errorResponse(`Unsupported audio format`, 'invalid_request_error', 'response_format', null, 400);
+      return errorResponse('Unsupported audio format. Supported: wav, pcm, mp3', 'invalid_request_error', 'response_format', null, 400);
+    }
+    if (msg.includes('Failed to load MP3 encoder')) {
+      return errorResponse('Audio encoder temporarily unavailable', 'api_error', null, 'encoder_error', 503);
     }
 
     // Generic backend error
@@ -249,93 +249,78 @@ function loadPresets() {
 
 
 // ============================================================================
-// FFmpeg WASM Audio Conversion
+// Audio Format Conversion (pure JS, no WASM dependencies)
 // ============================================================================
 
-let ffmpeg = null;
-let ffmpegReady = false;
-let ffmpegLoadPromise = null;
+let lamejsReady = false;
 
-async function initFFmpeg() {
-  if (ffmpegReady) return;
-  if (ffmpegLoadPromise) return ffmpegLoadPromise;
-
-  ffmpegLoadPromise = (async () => {
-    try {
-      const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-      ffmpeg = new FFmpeg();
-      ffmpeg.on('log', ({ message }) => {
-        // Suppress verbose FFmpeg logs in production
-      });
-      await ffmpeg.load();
-      ffmpegReady = true;
-      console.log('FFmpeg WASM loaded successfully');
-    } catch (e) {
-      console.error('FFmpeg WASM initialization failed:', e.message);
-      ffmpeg = null;
-      ffmpegReady = false;
-      ffmpegLoadPromise = null;
-      throw e;
-    }
-  })();
-
-  return ffmpegLoadPromise;
+async function ensureLamejs() {
+  if (lamejsReady) return;
+  if (typeof globalThis.lamejs !== 'undefined') {
+    lamejsReady = true;
+    return;
+  }
+  const response = await fetch('https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js');
+  if (!response.ok) throw new Error('Failed to load MP3 encoder');
+  const code = await response.text();
+  (new Function(code))();
+  if (typeof globalThis.lamejs === 'undefined') {
+    throw new Error('MP3 encoder failed to initialize');
+  }
+  lamejsReady = true;
 }
 
 async function convertAudio(audioBytes, targetFormat) {
-  // Passthrough for WAV — no conversion needed
+  // WAV passthrough — no conversion needed
   if (targetFormat === 'wav') {
     return audioBytes;
   }
 
-  // PCM: strip 44-byte WAV header (24kHz 16-bit mono PCM)
+  // PCM: strip 44-byte WAV header (24kHz 16-bit mono)
   if (targetFormat === 'pcm') {
     return audioBytes.slice(44);
   }
 
-  // All other formats need FFmpeg
-  await initFFmpeg();
-  if (!ffmpegReady) {
-    throw new Error('FFmpeg not available — cannot convert audio format');
+  // MP3: encode with lamejs (lazy-loaded from CDN)
+  if (targetFormat === 'mp3') {
+    await ensureLamejs();
+
+    // Parse WAV to get PCM samples
+    const view = new DataView(audioBytes.buffer, audioBytes.byteOffset, audioBytes.byteLength);
+    const wavDataOffset = 44; // skip WAV header
+    const numSamples = (audioBytes.length - wavDataOffset) / 2;
+    const samples = new Int16Array(numSamples);
+    for (let i = 0; i < numSamples; i++) {
+      samples[i] = view.getInt16(wavDataOffset + i * 2, true);
+    }
+
+    // Encode to MP3 (mono, 24kHz)
+    const sampleRate = 24000;
+    const encoder = new globalThis.lamejs.Mp3Encoder(1, sampleRate, 128);
+    const mp3Chunks = [];
+    const blockSize = 1152;
+
+    for (let i = 0; i < samples.length; i += blockSize) {
+      const chunk = samples.subarray(i, Math.min(i + blockSize, samples.length));
+      const mp3buf = encoder.encodeBuffer(chunk);
+      if (mp3buf.length > 0) mp3Chunks.push(mp3buf);
+    }
+    const flushBuf = encoder.flush();
+    if (flushBuf.length > 0) mp3Chunks.push(flushBuf);
+
+    // Concatenate all MP3 chunks
+    const totalLength = mp3Chunks.reduce((sum, buf) => sum + buf.length, 0);
+    const mp3Output = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of mp3Chunks) {
+      mp3Output.set(buf, offset);
+      offset += buf.length;
+    }
+    return mp3Output;
   }
 
-  const inputName = 'input.wav';
-  const outputName = `output.${targetFormat}`;
-
-  // Write input to FFmpeg virtual filesystem
-  await ffmpeg.writeFile(inputName, audioBytes);
-
-  // Execute conversion command based on target format
-  const args = ['-i', inputName];
-
-  switch (targetFormat) {
-    case 'mp3':
-      args.push('-codec:a', 'libmp3lame', '-b:a', '128k');
-      break;
-    case 'opus':
-      args.push('-codec:a', 'libopus', '-b:a', '64k');
-      break;
-    case 'aac':
-      args.push('-codec:a', 'aac', '-b:a', '128k');
-      break;
-    case 'flac':
-      args.push('-codec:a', 'flac');
-      break;
-    default:
-      throw new Error(`Unsupported target format: ${targetFormat}`);
-  }
-
-  args.push(outputName);
-  await ffmpeg.exec(args);
-
-  // Read output from virtual filesystem
-  const outputData = await ffmpeg.readFile(outputName);
-
-  // Clean up virtual filesystem
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(outputName);
-
-  return outputData;
+  // All unsupported formats
+  throw new Error(`Unsupported target format: ${targetFormat}`);
 }
 
 // ============================================================================
