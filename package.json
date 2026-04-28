@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "dev": "wrangler dev",
+    "build": "esbuild worker.js --bundle --format=esm --outfile=dist/worker.js",
     "deploy": "wrangler deploy"
   },
   "keywords": [],
@@ -14,5 +14,8 @@
     "@audio/encode-flac": "^1.1.1",
     "@audio/encode-mp3": "^1.1.1",
     "@audio/encode-opus": "^1.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.11"
   }
 }

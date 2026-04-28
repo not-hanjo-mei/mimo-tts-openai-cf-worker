@@ -52,4 +52,6 @@ desktop.ini
 
 # AI
 AGENTS.md
-.*/
+
+# 构建输出
+dist/
