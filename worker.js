@@ -2,7 +2,9 @@
 // MiMo TTS Worker — Cloudflare Worker for MiMo TTS API (OpenAI-compatible)
 // ============================================================================
 
-
+import encodeMp3 from '@audio/encode-mp3';
+import encodeOpus from '@audio/encode-opus';
+import encodeFlac from '@audio/encode-flac';
 
 // --- Voice Mapping (OpenAI → MiMo) ------------------------------------------
 const VOICE_MAPPING = {
@@ -187,10 +189,7 @@ async function handleRequest(request, env) {
       return errorResponse('No audio data in MiMo response', 'api_error', null, 'audio_parse_error', 500);
     }
     if (msg.includes('Unsupported target format')) {
-      return errorResponse('Unsupported audio format. Supported: wav, pcm, mp3', 'invalid_request_error', 'response_format', null, 400);
-    }
-    if (msg.includes('Failed to load MP3 encoder')) {
-      return errorResponse('Audio encoder temporarily unavailable', 'api_error', null, 'encoder_error', 503);
+      return errorResponse('Unsupported audio format. Supported: wav, pcm, mp3, opus, flac', 'invalid_request_error', 'response_format', null, 400);
     }
 
     // Generic backend error
@@ -252,26 +251,8 @@ function loadPresets(env) {
 
 
 // ============================================================================
-// Audio Format Conversion (pure JS, no WASM dependencies)
+// Audio Format Conversion (using @audio/encode-* packages)
 // ============================================================================
-
-let lamejsReady = false;
-
-async function ensureLamejs() {
-  if (lamejsReady) return;
-  if (typeof globalThis.lamejs !== 'undefined') {
-    lamejsReady = true;
-    return;
-  }
-  const response = await fetch('https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js');
-  if (!response.ok) throw new Error('Failed to load MP3 encoder');
-  const code = await response.text();
-  (new Function(code))();
-  if (typeof globalThis.lamejs === 'undefined') {
-    throw new Error('MP3 encoder failed to initialize');
-  }
-  lamejsReady = true;
-}
 
 async function convertAudio(audioBytes, targetFormat) {
   // WAV passthrough — no conversion needed
@@ -284,45 +265,39 @@ async function convertAudio(audioBytes, targetFormat) {
     return audioBytes.slice(44);
   }
 
-  // MP3: encode with lamejs (lazy-loaded from CDN)
-  if (targetFormat === 'mp3') {
-    await ensureLamejs();
-
-    // Parse WAV to get PCM samples
-    const view = new DataView(audioBytes.buffer, audioBytes.byteOffset, audioBytes.byteLength);
-    const wavDataOffset = 44; // skip WAV header
-    const numSamples = (audioBytes.length - wavDataOffset) / 2;
-    const samples = new Int16Array(numSamples);
-    for (let i = 0; i < numSamples; i++) {
-      samples[i] = view.getInt16(wavDataOffset + i * 2, true);
-    }
-
-    // Encode to MP3 (mono, 24kHz)
-    const sampleRate = 24000;
-    const encoder = new globalThis.lamejs.Mp3Encoder(1, sampleRate, 128);
-    const mp3Chunks = [];
-    const blockSize = 1152;
-
-    for (let i = 0; i < samples.length; i += blockSize) {
-      const chunk = samples.subarray(i, Math.min(i + blockSize, samples.length));
-      const mp3buf = encoder.encodeBuffer(chunk);
-      if (mp3buf.length > 0) mp3Chunks.push(mp3buf);
-    }
-    const flushBuf = encoder.flush();
-    if (flushBuf.length > 0) mp3Chunks.push(flushBuf);
-
-    // Concatenate all MP3 chunks
-    const totalLength = mp3Chunks.reduce((sum, buf) => sum + buf.length, 0);
-    const mp3Output = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const buf of mp3Chunks) {
-      mp3Output.set(buf, offset);
-      offset += buf.length;
-    }
-    return mp3Output;
+  // Parse WAV to get PCM Float32Array channel data
+  const view = new DataView(audioBytes.buffer, audioBytes.byteOffset, audioBytes.byteLength);
+  const dataOffset = 44;
+  const numSamples = (audioBytes.length - dataOffset) / 2;
+  const floatSamples = new Float32Array(numSamples);
+  for (let i = 0; i < numSamples; i++) {
+    floatSamples[i] = view.getInt16(dataOffset + i * 2, true) / 32768;
   }
 
-  // All unsupported formats
+  // MP3 encode
+  if (targetFormat === 'mp3') {
+    return encodeMp3(
+      { channelData: [floatSamples], sampleRate: 24000 },
+      { bitrate: 128 }
+    );
+  }
+
+  // Opus encode
+  if (targetFormat === 'opus') {
+    return encodeOpus(
+      { channelData: [floatSamples], sampleRate: 24000 },
+      { bitrate: 64 }
+    );
+  }
+
+  // FLAC encode
+  if (targetFormat === 'flac') {
+    return encodeFlac(
+      { channelData: [floatSamples], sampleRate: 24000 },
+      { compressionLevel: 5 }
+    );
+  }
+
   throw new Error(`Unsupported target format: ${targetFormat}`);
 }
 

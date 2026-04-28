@@ -10,5 +10,9 @@
   "author": "",
   "license": "MIT",
   "type": "module",
-  "dependencies": {}
+  "dependencies": {
+    "@audio/encode-flac": "^1.1.1",
+    "@audio/encode-mp3": "^1.1.1",
+    "@audio/encode-opus": "^1.0.2"
+  }
 }
