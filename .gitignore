@@ -1,0 +1,54 @@
+# 测试生成的文件
+test/
+.wrangler/
+
+# Node.js 相关
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# IDE 和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 环境变量和密钥
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+logs/
+test_results.txt
+
+# 临时文件
+tmp/
+temp/
+.tmp
+.temp
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 音频文件（生成结果）
+*.wav
+*.mp3
+*.opus
+
+# 其他
+*.bak
+*.backup
+*.old
+*.tmp
+
+# AI
+AGENTS.md

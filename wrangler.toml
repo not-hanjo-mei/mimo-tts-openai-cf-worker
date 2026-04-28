@@ -1,0 +1,19 @@
+name = "mimo-tts-worker"
+main = "worker.js"
+compatibility_date = "2026-01-29"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+MIMO_API_KEY = ""
+API_KEY = ""
+VOICE_PRESETS = """
+{
+  "soft_female": { "voice": "茉莉", "style": "温柔", "speed": 0.9 },
+  "cheerful_male": { "voice": "白桦", "style": "活泼", "speed": 1.1 },
+  "english_female": { "voice": "Mia", "style": "friendly", "speed": 1.0 }
+}
+"""
+
+[dev]
+ip = "0.0.0.0"
+port = 8787
