@@ -308,10 +308,10 @@ k;t.brate=r;t.mode=ka.STEREO;t.quality=3;t.bWriteVbrTag=!1;t.disable_reservoir=!
 globalThis.lamejs = lamejs;
 
 // ============================================================================
-// MiMo TTS Worker 鈥?Cloudflare Worker for MiMo TTS API (OpenAI-compatible)
+// MiMo TTS Worker -- Cloudflare Worker for MiMo TTS API (OpenAI-compatible)
 // ============================================================================
 
-// --- Voice Mapping (OpenAI 鈫?MiMo) ------------------------------------------
+// --- Voice Mapping (OpenAI -> MiMo) ------------------------------------------
 const VOICE_MAPPING = {
   'alloy': '鑼夎帀',
   'echo': '鐧芥ˇ',
@@ -328,7 +328,7 @@ const VOICE_MAPPING = {
   'cedar': 'mimo_default'
 };
 
-// --- Model Mapping (OpenAI 鈫?MiMo) ------------------------------------------
+// --- Model Mapping (OpenAI  -> MiMo) ------------------------------------------
 const MODEL_MAPPING = {
   'tts-1': 'mimo-v2-tts',
   'tts-1-hd': 'mimo-v2-tts',
@@ -355,7 +355,7 @@ export default {
 };
 
 // ============================================================================
-// Request Handler 鈥?routes, auth, presets, mapping, API call, conversion
+// Request Handler  -- routes, auth, presets, mapping, API call, conversion
 // ============================================================================
 async function handleRequest(request, env) {
   const API_KEY = env.API_KEY;
@@ -365,7 +365,7 @@ async function handleRequest(request, env) {
     return handleOptions(request);
   }
 
-  // --- Auth Check (optional 鈥?skip if API_KEY not configured) ---
+  // --- Auth Check (optional  -- skip if API_KEY not configured) ---
   if (API_KEY) {
     const authHeader = request.headers.get('Authorization');
     const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -445,10 +445,10 @@ async function handleRequest(request, env) {
       if (p.model !== undefined) model = p.model;
     }
 
-    // Map voice: OpenAI name 鈫?MiMo ID (or pass through if already MiMo ID or preset-resolved)
+    // Map voice: OpenAI name  -> MiMo ID (or pass through if already MiMo ID or preset-resolved)
     voice = VOICE_MAPPING[voice] || voice;
 
-    // Map model: OpenAI name 鈫?MiMo model (or pass through, or default)
+    // Map model: OpenAI name  -> MiMo model (or pass through, or default)
     const mimoModel = MODEL_MAPPING[model] || model || DEFAULT_MODEL;
 
     // Build MiMo request
@@ -457,7 +457,7 @@ async function handleRequest(request, env) {
     // Call MiMo API
     const mimoResponse = await callMimoAPI(mimoRequest, request, env);
 
-    // Parse MiMo response 鈥?extract WAV bytes
+    // Parse MiMo response  -- extract WAV bytes
     const wavBytes = parseMimoResponse(mimoResponse);
 
     // Convert audio if needed (JS encoding for non-WAV formats)
@@ -482,10 +482,10 @@ async function handleRequest(request, env) {
       return errorResponse('MIMO_API_KEY not configured', 'api_error', null, 'config_error', 500);
     }
     if (msg.includes('Backend authentication failed')) {
-      return errorResponse('Backend authentication failed 鈥?check MIMO_API_KEY', 'api_error', null, 'backend_auth_error', 502);
+      return errorResponse('Backend authentication failed  -- check MIMO_API_KEY', 'api_error', null, 'backend_auth_error', 502);
     }
     if (msg.includes('rate limited')) {
-      return errorResponse('Backend rate limited 鈥?try again later', 'api_error', null, 'rate_limit', 503);
+      return errorResponse('Backend rate limited  -- try again later', 'api_error', null, 'rate_limit', 503);
     }
     if (msg.includes('No audio data')) {
       return errorResponse('No audio data in MiMo response', 'api_error', null, 'audio_parse_error', 500);
@@ -588,7 +588,7 @@ async function convertAudio(audioBytes, targetFormat) {
 }
 
 // ============================================================================
-// MiMo API 鈥?Request Builder, Client, Response Parser
+// MiMo API  -- Request Builder, Client, Response Parser
 // ============================================================================
 
 function buildSpeedInstruction(speed) {
@@ -609,12 +609,12 @@ function buildMimoRequest(text, voiceId, instructions, speed, model) {
     userContent = userContent ? `${userContent} ${speedInst}` : speedInst;
   }
   
-  // User message FIRST (style instructions) 鈥?only if there's content
+  // User message FIRST (style instructions)  -- only if there's content
   if (userContent) {
     messages.push({ role: 'user', content: userContent });
   }
   
-  // Assistant message SECOND (text to speak) 鈥?always included
+  // Assistant message SECOND (text to speak)  -- always included
   messages.push({ role: 'assistant', content: text });
   
   const body = {
@@ -675,9 +675,9 @@ async function callMimoAPI(requestBody, request, env) {
     
     // Map MiMo status codes to proxy error codes
     if (status === 401 || status === 403) {
-      throw new Error(`Backend authentication failed 鈥?check API key (HTTP ${status})`);
+      throw new Error(`Backend authentication failed  -- check API key (HTTP ${status})`);
     } else if (status === 429) {
-      throw new Error(`Backend rate limited 鈥?try again later (HTTP ${status})`);
+      throw new Error(`Backend rate limited  -- try again later (HTTP ${status})`);
     } else {
       throw new Error(`MiMo API error (HTTP ${status}): ${errorText}`);
     }
