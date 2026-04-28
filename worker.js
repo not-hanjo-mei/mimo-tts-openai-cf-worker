@@ -32,7 +32,6 @@ const MODEL_MAPPING = {
 const DEFAULT_MODEL = 'mimo-v2.5-tts';
 
 // --- Audio Formats ----------------------------------------------------------
-const VALID_RESPONSE_FORMATS = ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'];
 
 const CONTENT_TYPES = {
   'mp3': 'audio/mpeg',
@@ -248,17 +247,6 @@ function loadPresets() {
   return {};
 }
 
-// ============================================================================
-// PRESET APPLICATION LOGIC (called inside main handler — see Task 8):
-//   const presets = loadPresets();
-//   if (presets[voice] && typeof presets[voice] === 'object') {
-//     const p = presets[voice];
-//     voice = p.voice || voice;
-//     if (p.style !== undefined) instructions = p.style;
-//     if (p.speed !== undefined) speed = p.speed;
-//     if (p.model !== undefined) model = p.model;
-//   }
-// ============================================================================
 
 // ============================================================================
 // FFmpeg WASM Audio Conversion
