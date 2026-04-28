@@ -33,6 +33,7 @@ tmp/
 temp/
 .tmp
 .temp
+/.*/
 
 # 操作系统生成的文件
 .DS_Store
