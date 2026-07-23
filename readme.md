@@ -15,7 +15,8 @@ MiMo TTS Worker is a proxy service deployed on Cloudflare Workers that wraps the
 
 - Provides an OpenAI-compatible TTS API, a drop-in replacement for the OpenAI SDK audio endpoint
 - Supports all 9 MiMo v2.5 voices, covering Chinese and English, male and female
-- Three output formats: wav (default), pcm (raw), mp3 (via lamejs)
+- Three non-stream formats: wav / pcm / mp3 (passed through to MiMo, no Worker re-encode)
+- Streaming: OpenAI-compatible stream (`stream` / `stream_format`) → MiMo stream pcm16 → raw PCM or SSE
 - Three preset types: Standard presets (voice + style + speed), VoiceDesign (custom voice generation via description), VoiceClone (voice cloning from a reference audio)
 - Speed control from 0.25x to 4.0x, delivered naturally via text instructions
 - Style control via free-form natural language descriptions, fully leveraging MiMo's style understanding
@@ -212,7 +213,7 @@ Specify the output format via the `response_format` parameter:
 |-----------------|-------------|-------------|
 | wav | audio/wav | Default format. 24kHz, 16-bit, mono. Fastest. |
 | pcm | audio/pcm | Raw audio data (no header) |
-| mp3 | audio/mpeg | MP3 format, 128kbps (via lamejs) |
+| mp3 | audio/mpeg | MP3 from MiMo (non-stream only, no local encode) |
 
 ```bash
 # MP3 format
@@ -372,11 +373,11 @@ To ease migration from the OpenAI SDK, OpenAI voice names are mapped to MiMo voi
 
 1. This project is for learning and personal use only
 2. A valid MiMo API Key is required (obtained through the MiMo platform)
-3. **Streaming output is not supported** — passing `stream_format` will return a 400 error
-4. **Pitch control is not supported** — the MiMo API does not provide a pitch parameter
-5. **Direct audio upload for voice cloning is not supported** — VoiceClone requires pre-uploading the reference audio to an R2 bucket
-6. Speed control is implemented via text instructions, not direct audio sample rate adjustment
-7. Cookie and other features need to be added by the user
+3. **Streaming is supported** — set `"stream": true` (raw PCM body) or `"stream_format": "sse"` (SSE). Stream path always uses MiMo `pcm16` (no stream↔non-stream cross conversion). Non-stream mp3/wav stay non-stream.
+4. **No Worker-side audio re-encoding** — lamejs/mp3 conversion was removed (CPU time exceed on Workers). Formats are requested from MiMo and returned as-is.
+5. **Pitch control is not supported** — the MiMo API does not provide a pitch parameter
+6. **Direct audio upload for voice cloning is not supported** — VoiceClone requires pre-uploading the reference audio to an R2 bucket
+7. Speed control is implemented via text instructions, not direct audio sample rate adjustment
 8. Keep text length reasonable to avoid request timeouts
 
 ## ❓ FAQ
@@ -415,7 +416,7 @@ To ease migration from the OpenAI SDK, OpenAI voice names are mapped to MiMo voi
    A: First requests may be slower due to Cloudflare Worker cold starts and MiMo API response time. Format conversion uses built-in JS encoders (like lamejs) with no external dependencies.
 
 8. **Q: Can I output streaming audio?**
-   A: No. This project does not support streaming output.
+   A: Yes. Use `"stream": true` for raw PCM16LE @ 24kHz, or `"stream_format": "sse"` for SSE with base64 deltas. Streaming cannot re-encode to mp3.
 
 9. **Q: How do I use a custom domain?**
    A: There are two ways:

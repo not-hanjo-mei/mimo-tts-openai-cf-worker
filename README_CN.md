@@ -15,7 +15,8 @@ MiMo TTS Worker 是一个部署在 Cloudflare Worker 上的代理服务，它将
 
 - 提供 OpenAI 兼容的 TTS 接口格式，可直接替换 OpenAI SDK 中的音频端点
 - 支持 MiMo v2.5 全部 9 个音色，覆盖中英文男女声
-- 支持 3 种输出格式：wav（默认）、pcm（原始）、mp3（lamejs）
+- 非流式三种格式：wav / pcm / mp3（直接请求 MiMo，Worker 不做转码）
+- 流式：兼容 OpenAI 的 `stream` / `stream_format`，MiMo 流式 pcm16 原样转发
 - 三种预设类型：标准预设（音色 + 风格 + 语速）、VoiceDesign（自定义声音设计）、VoiceClone（参考音频克隆）
 - 语速控制 0.25x - 4.0x，通过文本指令自然传递
 - 风格控制支持自由文本描述，充分发挥 MiMo 风格理解能力
@@ -198,7 +199,7 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 |-----------------|-------------|------|
 | wav | audio/wav | 默认格式，24kHz 16bit 单声道，最快 |
 | pcm | audio/pcm | 原始音频数据（无文件头） |
-| mp3 | audio/mpeg | MP3 格式，128kbps（lamejs） |
+| mp3 | audio/mpeg | MiMo 直接返回 MP3（仅非流式，Worker 不本地编码） |
 
 ```bash
 # MP3 格式
@@ -358,11 +359,11 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 
 1. 本项目仅供学习和个人使用
 2. 需要有效的 MiMo API Key（通过 MiMo 平台获取）
-3. **不支持流式输出** — 使用了 `stream_format` 参数会返回 400 错误
-4. **不支持音调控制** — MiMo API 没有提供 pitch 参数
-5. **不支持直接上传音频进行声音克隆** — VoiceClone 需要通过 R2 存储桶预先上传参考音频
-6. 语速通过文本指令实现，非直接的音频采样率调节
-7. Cookie 等功能需要用户自行添加
+3. **支持流式输出** — `"stream": true`（原始 PCM 响应体）或 `"stream_format": "sse"`（SSE）。流式路径固定走 MiMo `pcm16`，非流式 mp3/wav 仍走非流式，不做互转。
+4. **Worker 不做音频重编码** — 已移除 lamejs/mp3 本地转码（会导致 Worker CPU time exceed）。格式直接向 MiMo 请求并原样返回。
+5. **不支持音调控制** — MiMo API 没有提供 pitch 参数
+6. **不支持直接上传音频进行声音克隆** — VoiceClone 需要通过 R2 存储桶预先上传参考音频
+7. 语速通过文本指令实现，非直接的音频采样率调节
 8. 建议文本长度不要过长，以避免请求超时
 
 ## ❓ 常见问题
@@ -400,8 +401,8 @@ curl -X POST https://你的worker地址/v1/audio/speech \
 7. **Q: 为什么第一次请求很慢？**
    A: 首次请求可能较慢的原因包括 Cloudflare Worker 冷启动及 MiMo API 响应时间。格式转换使用内嵌 JS 编码器（如 lamejs），无外部依赖。
 
-8. **Q: 可以同时输出流式音频吗？**
-   A: 不能。本项目不支持流式输出（streaming）。
+8. **Q: 可以输出流式音频吗？**
+   A: 可以。`"stream": true` 返回 24kHz PCM16LE 原始流；`"stream_format": "sse"` 返回 SSE base64 分片。流式不能转 mp3。
 
 9. **Q: 如何使用自定义域名？**
    A: 有两种方式：
